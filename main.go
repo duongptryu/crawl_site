@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-func writeCsv(data []string) {
-	fileName := "data.csv"
-
-	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 777)
+func writeCsv(data [][]string) {
+	file, err := os.Create("data.csv")
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -21,14 +19,17 @@ func writeCsv(data []string) {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	err = writer.Write(data)
-	if err != nil {
-		log.Fatalln(err)
+	for _, value := range data {
+		err := writer.Write(value)
+		if err != nil {
+			log.Println(err)
+		}
 	}
 }
 
-func scapePageData(doc *goquery.Document) {
-	doc.Find("ul.srp-results>li.s-item").Each(func (index int, item *goquery.Selection){
+func scapePageData(doc *goquery.Document) [][]string {
+	var result [][]string
+	doc.Find("ul.srp-results>li.s-item").Each(func(index int, item *goquery.Selection) {
 		a := item.Find("a.s-item__link")
 
 		title := strings.TrimSpace(a.Text())
@@ -39,8 +40,10 @@ func scapePageData(doc *goquery.Document) {
 
 		scrapedData := []string{title, price, url}
 
-		writeCsv(scrapedData)
+		result = append(result, scrapedData)
 	})
+
+	return result
 }
 
 func getHtml(url string) *http.Response {
@@ -50,16 +53,18 @@ func getHtml(url string) *http.Response {
 	}
 
 	if resp.StatusCode >= 400 {
-		log.Fatal("Status code of request != 2000")
+		log.Fatal("Status code of request != 200")
 	}
 
 	return resp
 }
 
-func main () {
+func main() {
 	url := "https://www.ebay.com/sch/i.html?_from=R40&_nkw=beatls+puzzle&_sacat=0&_ipg=200"
 
 	var previousUrl string
+
+	var totalResult [][]string
 
 	for {
 		response := getHtml(url)
@@ -70,15 +75,20 @@ func main () {
 			log.Fatal(err)
 		}
 
-		scapePageData(doc)
+		result := scapePageData(doc)
+		totalResult = append(totalResult, result...)
 
-		href, _:= doc.Find("nav.pagination>a.pagination__next").Attr("href")
+		href, _ := doc.Find("nav.pagination>a.pagination__next").Attr("href")
+		if href == "" {
+			break
+		}
 		if href == previousUrl {
 			break
-		}else {
+		} else {
 			url = href
 			previousUrl = href
 		}
 	}
-}
 
+	writeCsv(totalResult)
+}
